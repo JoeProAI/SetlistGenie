@@ -1,10 +1,13 @@
 import os
 import json
-from flask import Flask, request, render_template, jsonify, redirect, url_for, session
+import csv
+import io
+import requests
 import firebase_admin
 from firebase_admin import credentials, auth
-import requests
+from flask import Flask, request, render_template, jsonify, redirect, url_for, session, send_file, Response
 from functools import wraps
+from datetime import datetime
 
 # Get the absolute path to the templates folder
 base_dir = os.path.abspath(os.path.dirname(__file__))
@@ -354,6 +357,197 @@ def get_setlists():
         return jsonify({'error': 'Failed to fetch setlists'}), 500
     
     return jsonify(setlists_response.json())
+
+# CSV Import route - Upload a CSV file of songs
+@app.route('/api/import-csv', methods=['POST'])
+@require_auth
+def import_csv():
+    user_id = session.get('user_id')
+    
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': 'No file selected'}), 400
+    
+    if not file.filename.endswith('.csv'):
+        return jsonify({'error': 'File must be a CSV'}), 400
+    
+    # Get user profile ID
+    headers = {
+        'apikey': SUPABASE_KEY,
+        'Authorization': f'Bearer {SUPABASE_KEY}'
+    }
+    
+    profile_response = requests.get(
+        f"{SUPABASE_URL}/rest/v1/profiles?firebase_uid=eq.{user_id}&select=id",
+        headers=headers
+    )
+    
+    if profile_response.status_code != 200 or not profile_response.json():
+        return jsonify({'error': 'User profile not found'}), 404
+    
+    profile_id = profile_response.json()[0]['id']
+    
+    try:
+        # Read the CSV file
+        stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
+        csv_reader = csv.DictReader(stream)
+        
+        # Track imported songs
+        imported = 0
+        errors = []
+        
+        for row in csv_reader:
+            try:
+                # Extract data from CSV row
+                song_data = {
+                    'user_id': profile_id,
+                    'title': row.get('title', '').strip(),
+                    'artist': row.get('artist', '').strip(),
+                    'duration': int(row.get('duration', 0)) if row.get('duration') else 0,
+                    'energy': int(row.get('energy', 5)) if row.get('energy') else 5,
+                    'key': row.get('key', '').strip(),
+                    'bpm': int(row.get('bpm', 0)) if row.get('bpm') else 0,
+                    'must_play': str(row.get('must_play', '')).lower() in ['true', 'yes', '1'],
+                    'exclude_from_set': str(row.get('exclude_from_set', '')).lower() in ['true', 'yes', '1']
+                }
+                
+                # Validate required fields
+                if not song_data['title'] or not song_data['artist']:
+                    errors.append(f"Row missing title or artist: {row}")
+                    continue
+                
+                # Add song to database
+                song_response = requests.post(
+                    f"{SUPABASE_URL}/rest/v1/songs",
+                    headers={
+                        'apikey': SUPABASE_KEY,
+                        'Authorization': f'Bearer {SUPABASE_KEY}',
+                        'Content-Type': 'application/json',
+                        'Prefer': 'return=representation'
+                    },
+                    json=song_data
+                )
+                
+                if song_response.status_code == 201:
+                    imported += 1
+                else:
+                    errors.append(f"Failed to import {song_data['title']}: {song_response.text}")
+            
+            except Exception as e:
+                errors.append(f"Error processing row: {str(e)}")
+        
+        return jsonify({
+            'success': True,
+            'message': f"Successfully imported {imported} songs",
+            'errors': errors
+        })
+        
+    except Exception as e:
+        return jsonify({'error': f"Error processing CSV: {str(e)}"}), 500
+
+# CSV Template route - Download a template CSV file
+@app.route('/api/csv-template')
+@require_auth
+def download_csv_template():
+    # Create a CSV template with headers and example rows
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    # Write headers
+    writer.writerow(['title', 'artist', 'duration', 'energy', 'key', 'bpm', 'must_play', 'exclude_from_set'])
+    
+    # Write example rows
+    writer.writerow(['My Song Title', 'Artist Name', '180', '7', 'C Major', '120', 'no', 'no'])
+    writer.writerow(['Another Song', 'Different Artist', '240', '4', 'A Minor', '95', 'yes', 'no'])
+    
+    # Prepare the response
+    output.seek(0)
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={
+            "Content-Disposition": f"attachment; filename=setlistgenie_template.csv"
+        }
+    )
+
+# Export Setlist route - Download a setlist as CSV
+@app.route('/api/export-setlist/<int:setlist_id>')
+@require_auth
+def export_setlist(setlist_id):
+    user_id = session.get('user_id')
+    
+    # Get user profile ID
+    headers = {
+        'apikey': SUPABASE_KEY,
+        'Authorization': f'Bearer {SUPABASE_KEY}'
+    }
+    
+    profile_response = requests.get(
+        f"{SUPABASE_URL}/rest/v1/profiles?firebase_uid=eq.{user_id}&select=id",
+        headers=headers
+    )
+    
+    if profile_response.status_code != 200 or not profile_response.json():
+        return jsonify({'error': 'User profile not found'}), 404
+    
+    profile_id = profile_response.json()[0]['id']
+    
+    # Get setlist details
+    setlist_response = requests.get(
+        f"{SUPABASE_URL}/rest/v1/setlists?id=eq.{setlist_id}&user_id=eq.{profile_id}",
+        headers=headers
+    )
+    
+    if setlist_response.status_code != 200 or not setlist_response.json():
+        return jsonify({'error': 'Setlist not found'}), 404
+    
+    setlist = setlist_response.json()[0]
+    
+    # Get setlist songs with joined song data
+    songs_response = requests.get(
+        f"{SUPABASE_URL}/rest/v1/setlist_songs?setlist_id=eq.{setlist_id}&select=position,set_number,songs(title,artist,duration,energy,key,bpm)",
+        headers=headers
+    )
+    
+    if songs_response.status_code != 200:
+        return jsonify({'error': 'Failed to fetch setlist songs'}), 500
+    
+    setlist_songs = songs_response.json()
+    
+    # Create CSV file
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    # Write headers
+    writer.writerow(['Set', 'Position', 'Title', 'Artist', 'Duration (sec)', 'Energy', 'Key', 'BPM'])
+    
+    # Write song rows
+    for item in setlist_songs:
+        song = item.get('songs', {})
+        writer.writerow([
+            item.get('set_number', 1),
+            item.get('position', 0) + 1,  # Make positions 1-based for human readability
+            song.get('title', ''),
+            song.get('artist', ''),
+            song.get('duration', 0),
+            song.get('energy', 0),
+            song.get('key', ''),
+            song.get('bpm', 0)
+        ])
+    
+    # Prepare the response
+    output.seek(0)
+    safe_name = ''.join(c if c.isalnum() else '_' for c in setlist.get('name', 'setlist'))
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={
+            "Content-Disposition": f"attachment; filename={safe_name}.csv"
+        }
+    )
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)), debug=False)
