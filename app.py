@@ -7,7 +7,7 @@ import requests
 from functools import wraps
 
 # Initialize Flask app
-app = Flask(__name__)
+app = Flask(__name__, template_folder='app/templates', static_folder='app/static')
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev_secret_key")
 
 # Initialize Firebase Admin SDK (server-side)
