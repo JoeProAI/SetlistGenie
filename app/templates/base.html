@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}SetlistGenie{% endblock %}</title>
+    <!-- No external CSS frameworks to reduce costs -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1><a href="/">SetlistGenie</a></h1>
+            <nav id="nav-menu">
+                <ul>
+                    {% if 'user_id' in session %}
+                    <li><a href="/dashboard">Dashboard</a></li>
+                    <li><a href="#" id="logout-btn">Logout</a></li>
+                    {% else %}
+                    <li><a href="/login">Login</a></li>
+                    {% endif %}
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <div class="container">
+            {% block content %}{% endblock %}
+        </div>
+    </main>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2025 SetlistGenie - For booking musicians</p>
+        </div>
+    </footer>
+
+    <!-- Firebase JS SDK - using tag approach to avoid npm dependencies -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+    
+    <script>
+        // Your web app's Firebase configuration
+        const firebaseConfig = {
+            apiKey: "AIzaSyB33yPhs0gX-NMMJzCRKTxTJd_4ez6HjyU",
+            authDomain: "pauliecee-ba4e0.firebaseapp.com",
+            projectId: "pauliecee-ba4e0",
+            storageBucket: "pauliecee-ba4e0.firebasestore.app",
+            messagingSenderId: "1020479459431",
+            appId: "1:1020479459431:web:7a64003bc2b3ecff2084c2",
+            measurementId: "G-QNH3MGZEEC"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        
+        // Handle logout
+        const logoutBtn = document.getElementById('logout-btn');
+        if (logoutBtn) {
+            logoutBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                
+                // Sign out from Firebase
+                firebase.auth().signOut().then(() => {
+                    // Clear server session
+                    fetch('/api/logout', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    }).then(() => {
+                        window.location.href = '/login';
+                    });
+                });
+            });
+        }
+    </script>
+    
+    {% block scripts %}{% endblock %}
+</body>
+</html>

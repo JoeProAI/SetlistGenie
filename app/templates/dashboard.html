@@ -1,0 +1,396 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - SetlistGenie{% endblock %}
+
+{% block content %}
+<div class="dashboard-container">
+    <h2>Your Dashboard</h2>
+    
+    <div class="dashboard-tabs">
+        <button class="tab-btn active" data-tab="songs">Manage Songs</button>
+        <button class="tab-btn" data-tab="generate">Generate Setlist</button>
+        <button class="tab-btn" data-tab="saved">Saved Setlists</button>
+    </div>
+    
+    <div id="songs-tab" class="tab-content active">
+        <h3>Your Songs</h3>
+        <div class="action-bar">
+            <button id="add-song-btn" class="btn primary-btn">Add New Song</button>
+        </div>
+        
+        <div id="song-form-container" class="hidden">
+            <form id="song-form">
+                <div class="form-group">
+                    <label for="song-title">Title</label>
+                    <input type="text" id="song-title" required>
+                </div>
+                <div class="form-group">
+                    <label for="song-artist">Artist</label>
+                    <input type="text" id="song-artist" required>
+                </div>
+                <div class="form-group">
+                    <label for="song-duration">Duration (minutes)</label>
+                    <input type="number" id="song-duration" min="0.5" step="0.5" required>
+                </div>
+                <div class="form-group checkbox">
+                    <input type="checkbox" id="song-must-play">
+                    <label for="song-must-play">Must Play</label>
+                </div>
+                <div class="form-group checkbox">
+                    <input type="checkbox" id="song-exclude">
+                    <label for="song-exclude">Exclude from Sets</label>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn primary-btn">Save Song</button>
+                    <button type="button" id="cancel-song-btn" class="btn secondary-btn">Cancel</button>
+                </div>
+            </form>
+        </div>
+        
+        <div class="songs-list-container">
+            <table id="songs-table">
+                <thead>
+                    <tr>
+                        <th>Title</th>
+                        <th>Artist</th>
+                        <th>Duration</th>
+                        <th>Must Play</th>
+                        <th>Exclude</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="songs-list">
+                    <tr class="empty-state">
+                        <td colspan="6">No songs added yet. Add your first song!</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <div id="generate-tab" class="tab-content">
+        <h3>Generate Setlist</h3>
+        <form id="generate-form">
+            <div class="form-group">
+                <label for="num-sets">Number of Sets</label>
+                <input type="number" id="num-sets" min="1" max="5" value="1" required>
+            </div>
+            <div class="form-group">
+                <label for="set-duration">Set Duration (minutes)</label>
+                <input type="number" id="set-duration" min="15" step="5" value="45" required>
+            </div>
+            <div class="form-group">
+                <label for="min-spacing">Minimum Songs Between Same Artist</label>
+                <input type="number" id="min-spacing" min="1" max="10" value="3" required>
+            </div>
+            <div class="form-group checkbox">
+                <input type="checkbox" id="save-setlist">
+                <label for="save-setlist">Save this setlist</label>
+            </div>
+            <div id="setlist-name-container" class="form-group hidden">
+                <label for="setlist-name">Setlist Name</label>
+                <input type="text" id="setlist-name" placeholder="e.g., Friday Night at Joe's Bar">
+            </div>
+            <div class="form-actions">
+                <button type="submit" class="btn primary-btn">Generate Setlist</button>
+            </div>
+        </form>
+        
+        <div id="setlist-result" class="hidden">
+            <h3>Your Generated Setlist</h3>
+            <div id="setlist-container"></div>
+            <div id="extras-container">
+                <h4>Extra Songs (Not Used)</h4>
+                <ul id="extras-list"></ul>
+            </div>
+            <button id="print-setlist" class="btn secondary-btn">Print Setlist</button>
+        </div>
+    </div>
+    
+    <div id="saved-tab" class="tab-content">
+        <h3>Your Saved Setlists</h3>
+        <div id="saved-setlists-container">
+            <p class="empty-state">No saved setlists yet.</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Tab switching
+    document.querySelectorAll('.tab-btn').forEach(button => {
+        button.addEventListener('click', function() {
+            // Remove active class from all tabs and buttons
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.remove('active'));
+            
+            // Add active class to clicked button and corresponding tab
+            this.classList.add('active');
+            document.getElementById(`${this.dataset.tab}-tab`).classList.add('active');
+        });
+    });
+    
+    // Songs management
+    const songsList = document.getElementById('songs-list');
+    const songForm = document.getElementById('song-form');
+    const songFormContainer = document.getElementById('song-form-container');
+    
+    // Toggle song form
+    document.getElementById('add-song-btn').addEventListener('click', function() {
+        songFormContainer.classList.toggle('hidden');
+        songForm.reset();
+    });
+    
+    document.getElementById('cancel-song-btn').addEventListener('click', function() {
+        songFormContainer.classList.add('hidden');
+        songForm.reset();
+    });
+    
+    // Load songs
+    function loadSongs() {
+        fetch('/api/songs')
+            .then(response => response.json())
+            .then(songs => {
+                if (songs.length === 0) {
+                    songsList.innerHTML = '<tr class="empty-state"><td colspan="6">No songs added yet. Add your first song!</td></tr>';
+                    return;
+                }
+                
+                songsList.innerHTML = '';
+                songs.forEach(song => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${song.title}</td>
+                        <td>${song.artist}</td>
+                        <td>${Math.floor(song.duration / 60)}:${(song.duration % 60).toString().padStart(2, '0')}</td>
+                        <td>${song.must_play ? 'Yes' : 'No'}</td>
+                        <td>${song.exclude_from_set ? 'Yes' : 'No'}</td>
+                        <td>
+                            <button class="btn delete-btn" data-id="${song.id}">Delete</button>
+                        </td>
+                    `;
+                    songsList.appendChild(row);
+                });
+                
+                // Add delete event listeners
+                document.querySelectorAll('.delete-btn').forEach(button => {
+                    button.addEventListener('click', function() {
+                        if (confirm('Are you sure you want to delete this song?')) {
+                            deleteSong(this.dataset.id);
+                        }
+                    });
+                });
+            })
+            .catch(error => {
+                console.error('Error loading songs:', error);
+            });
+    }
+    
+    // Add song
+    songForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const title = document.getElementById('song-title').value;
+        const artist = document.getElementById('song-artist').value;
+        const durationMinutes = parseFloat(document.getElementById('song-duration').value);
+        const duration = Math.round(durationMinutes * 60); // Convert to seconds
+        const mustPlay = document.getElementById('song-must-play').checked;
+        const exclude = document.getElementById('song-exclude').checked;
+        
+        const songData = {
+            title,
+            artist,
+            duration,
+            must_play: mustPlay,
+            exclude_from_set: exclude
+        };
+        
+        fetch('/api/songs', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(songData)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                songFormContainer.classList.add('hidden');
+                songForm.reset();
+                loadSongs();
+            } else {
+                alert('Failed to add song: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(error => {
+            console.error('Error adding song:', error);
+            alert('Failed to add song: ' + error.message);
+        });
+    });
+    
+    // Delete song
+    function deleteSong(songId) {
+        fetch(`/api/songs/${songId}`, {
+            method: 'DELETE'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                loadSongs();
+            } else {
+                alert('Failed to delete song: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(error => {
+            console.error('Error deleting song:', error);
+            alert('Failed to delete song: ' + error.message);
+        });
+    }
+    
+    // Setlist generation
+    const generateForm = document.getElementById('generate-form');
+    const saveSetlistCheckbox = document.getElementById('save-setlist');
+    const setlistNameContainer = document.getElementById('setlist-name-container');
+    
+    saveSetlistCheckbox.addEventListener('change', function() {
+        setlistNameContainer.classList.toggle('hidden', !this.checked);
+    });
+    
+    generateForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const numSets = parseInt(document.getElementById('num-sets').value);
+        const setDurationMinutes = parseInt(document.getElementById('set-duration').value);
+        const setDuration = setDurationMinutes * 60; // Convert to seconds
+        const minSpacing = parseInt(document.getElementById('min-spacing').value);
+        const saveSetlist = saveSetlistCheckbox.checked;
+        const setlistName = document.getElementById('setlist-name').value || 'Untitled Setlist';
+        
+        const requestData = {
+            num_sets: numSets,
+            set_duration: setDuration,
+            min_songs_between_artist: minSpacing,
+            save_setlist: saveSetlist,
+            setlist_name: setlistName
+        };
+        
+        fetch('/api/generate-setlist', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestData)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                alert('Failed to generate setlist: ' + data.error);
+                return;
+            }
+            
+            displaySetlist(data);
+        })
+        .catch(error => {
+            console.error('Error generating setlist:', error);
+            alert('Failed to generate setlist: ' + error.message);
+        });
+    });
+    
+    function displaySetlist(data) {
+        const setlistResult = document.getElementById('setlist-result');
+        const setlistContainer = document.getElementById('setlist-container');
+        const extrasList = document.getElementById('extras-list');
+        
+        setlistResult.classList.remove('hidden');
+        setlistContainer.innerHTML = '';
+        extrasList.innerHTML = '';
+        
+        // Display setlist
+        data.setlist.forEach((set, index) => {
+            const setElement = document.createElement('div');
+            setElement.className = 'set-container';
+            
+            setElement.innerHTML = `
+                <h4>Set ${index + 1} (${Math.floor(set.duration / 60)} minutes)</h4>
+                <ol class="set-songs-list">
+                    ${set.songs.map(song => `
+                        <li>
+                            <strong>${song.title}</strong> - ${song.artist} 
+                            (${Math.floor(song.duration / 60)}:${(song.duration % 60).toString().padStart(2, '0')})
+                            ${song.must_play ? '<span class="must-play-badge">Must Play</span>' : ''}
+                        </li>
+                    `).join('')}
+                </ol>
+            `;
+            
+            setlistContainer.appendChild(setElement);
+        });
+        
+        // Display extras
+        if (data.extras.length > 0) {
+            data.extras.forEach(song => {
+                const li = document.createElement('li');
+                li.innerHTML = `
+                    <strong>${song.title}</strong> - ${song.artist} 
+                    (${Math.floor(song.duration / 60)}:${(song.duration % 60).toString().padStart(2, '0')})
+                    ${song.must_play ? '<span class="must-play-badge">Must Play</span>' : ''}
+                `;
+                extrasList.appendChild(li);
+            });
+        } else {
+            extrasList.innerHTML = '<li>No extra songs</li>';
+        }
+    }
+    
+    // Print setlist
+    document.getElementById('print-setlist').addEventListener('click', function() {
+        window.print();
+    });
+    
+    // Load saved setlists
+    function loadSavedSetlists() {
+        const savedSetlistsContainer = document.getElementById('saved-setlists-container');
+        
+        fetch('/api/setlists')
+            .then(response => response.json())
+            .then(setlists => {
+                if (setlists.length === 0) {
+                    savedSetlistsContainer.innerHTML = '<p class="empty-state">No saved setlists yet.</p>';
+                    return;
+                }
+                
+                savedSetlistsContainer.innerHTML = '';
+                setlists.forEach(setlist => {
+                    const setlistElement = document.createElement('div');
+                    setlistElement.className = 'saved-setlist';
+                    
+                    const date = new Date(setlist.created_at);
+                    const formattedDate = date.toLocaleDateString();
+                    
+                    setlistElement.innerHTML = `
+                        <div class="setlist-header">
+                            <h4>${setlist.name}</h4>
+                            <p>Created: ${formattedDate}</p>
+                            ${setlist.description ? `<p>${setlist.description}</p>` : ''}
+                        </div>
+                        <div class="setlist-actions">
+                            <button class="btn view-btn" data-id="${setlist.id}">View</button>
+                        </div>
+                    `;
+                    
+                    savedSetlistsContainer.appendChild(setlistElement);
+                });
+            })
+            .catch(error => {
+                console.error('Error loading saved setlists:', error);
+            });
+    }
+    
+    // Initial load
+    loadSongs();
+    loadSavedSetlists();
+});
+</script>
+{% endblock %}

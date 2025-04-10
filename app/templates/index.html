@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block title %}SetlistGenie - Setlist Generator for Musicians{% endblock %}
+
+{% block content %}
+<div class="hero-section">
+    <div class="hero-content">
+        <h1>Welcome to SetlistGenie</h1>
+        <p class="hero-subtitle">Create perfect setlists for your gigs in seconds</p>
+        
+        <div class="hero-actions">
+            <a href="/login" class="btn hero-btn">Get Started</a>
+        </div>
+    </div>
+</div>
+
+<div class="features-section">
+    <div class="feature">
+        <div class="feature-icon">📝</div>
+        <h3>Organize Your Songs</h3>
+        <p>Keep track of all your songs in one place with details like duration and must-play status.</p>
+    </div>
+    
+    <div class="feature">
+        <div class="feature-icon">✨</div>
+        <h3>Smart Setlist Generator</h3>
+        <p>Create balanced setlists that consider song duration, artist spacing, and must-play songs.</p>
+    </div>
+    
+    <div class="feature">
+        <div class="feature-icon">💾</div>
+        <h3>Save Your Setlists</h3>
+        <p>Store and access your favorite setlists for future gigs.</p>
+    </div>
+</div>
+
+<div class="how-it-works">
+    <h2>How It Works</h2>
+    
+    <div class="steps">
+        <div class="step">
+            <div class="step-number">1</div>
+            <div class="step-content">
+                <h3>Add Your Songs</h3>
+                <p>Enter the songs you know how to play with their details.</p>
+            </div>
+        </div>
+        
+        <div class="step">
+            <div class="step-number">2</div>
+            <div class="step-content">
+                <h3>Set Your Parameters</h3>
+                <p>Choose how many sets you need and how long each should be.</p>
+            </div>
+        </div>
+        
+        <div class="step">
+            <div class="step-number">3</div>
+            <div class="step-content">
+                <h3>Generate & Save</h3>
+                <p>Get your perfect setlist instantly and save it for later.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="cta-section">
+    <h2>Ready to create your perfect setlist?</h2>
+    <a href="/login" class="btn cta-btn">Get Started Now</a>
+</div>
+{% endblock %}
