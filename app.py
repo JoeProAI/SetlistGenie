@@ -6,8 +6,24 @@ from firebase_admin import credentials, auth
 import requests
 from functools import wraps
 
+# Get the absolute path to the templates folder
+base_dir = os.path.abspath(os.path.dirname(__file__))
+templates_dir = os.path.join(base_dir, 'app', 'templates')
+static_dir = os.path.join(base_dir, 'app', 'static')
+
+# Print paths for debugging
+print(f"Base directory: {base_dir}")
+print(f"Templates directory: {templates_dir}")
+print(f"Static directory: {static_dir}")
+
+# Check if templates directory exists
+if os.path.exists(templates_dir):
+    print(f"Templates directory exists: {os.listdir(templates_dir)}")
+else:
+    print(f"Templates directory does not exist!")
+
 # Initialize Flask app
-app = Flask(__name__, template_folder='app/templates', static_folder='app/static')
+app = Flask(__name__, template_folder=templates_dir, static_folder=static_dir)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev_secret_key")
 
 # Initialize Firebase Admin SDK (server-side)
